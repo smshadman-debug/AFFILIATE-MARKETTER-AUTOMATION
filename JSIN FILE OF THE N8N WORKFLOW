@@ -1,0 +1,1325 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "actorId": {
+          "__rl": true,
+          "value": "shu8hvrXbJbY3Eb9W",
+          "mode": "list",
+          "cachedResultName": "Instagram Scraper (apify/instagram-scraper)",
+          "cachedResultUrl": "https://console.apify.com/actors/shu8hvrXbJbY3Eb9W/input"
+        }
+      },
+      "type": "@apify/n8n-nodes-apify.apifyTrigger",
+      "typeVersion": 1,
+      "position": [
+        -496,
+        -48
+      ],
+      "id": "4e266354-7d0e-4d1d-9ef6-8ee5160332db",
+      "name": "Apify Trigger",
+      "webhookId": "8f3af163-a29b-49c0-ada6-1ac0ea7eff7f",
+      "credentials": {
+        "apifyApi": {
+          "id": "8vlaMBNqnQD2sYxN",
+          "name": "memerz"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "Datasets",
+        "datasetId": "={{ $json.resource.storages.datasets.default.id }}",
+        "options": {}
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -48
+      ],
+      "id": "215811d1-c708-457d-9264-d3550896e420",
+      "name": "Get dataset items",
+      "credentials": {
+        "apifyApi": {
+          "id": "GYL04tPTAfp79J4G",
+          "name": "foodies"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sort items by timestamp DESC and return only the latest post\nconst sorted = items.sort((a, b) => new Date(b.json.timestamp) - new Date(a.json.timestamp));\nreturn [sorted[0]];"
+      },
+      "id": "610e9dea-df3a-408d-b7d4-4bb2b42a9e74",
+      "name": "Get Latest Post",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize post data and compute the route string for the Switch node\nconst post = items[0].json;\nconst childPosts = post.childPosts || [];\nconst hasVideos = childPosts.some(c => c.type === 'Video');\nconst hasImages = childPosts.some(c => c.type === 'Image');\n\nlet route;\nif (post.type === 'Sidecar' && hasVideos) {\n  route = 'sidecar_video';\n} else if (post.type === 'Sidecar') {\n  route = 'sidecar_image';\n} else if (post.type === 'Image') {\n  route = 'single_image';\n} else {\n  route = 'video';\n}\n\nreturn [{\n  json: {\n    postType: post.type,\n    captionRaw: post.caption || '',\n    images: post.images || [],\n    videoUrl: post.videoUrl || '',\n    childPosts,\n    hasVideos,\n    hasImages,\n    timestamp: post.timestamp,\n    route\n  }\n}];"
+      },
+      "id": "7ad3c306-b1ad-4f1f-b4b6-345c7c5b8491",
+      "name": "Normalize Post Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "qwen2.5:3b",
+          "mode": "list",
+          "cachedResultName": "qwen2.5:3b"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Act as a Gen Z Meme Creator. Rewrite the caption provided below using these strict rules:\n\nFilter Mentions: Delete any human names or text starting with '@',.\nVibe Check: If the caption is educational, long, or \"boring,\" replace it entirely with short Gen Z slang (e.g., \"bro rlly 💀\", \"lmao xd\", \"wait for it\").\n\nHashtags: Add exactly 3 viral, relatable hashtags.\n\nStrict Constraint: Total output (caption + hashtags) MUST be under 25 characters.\n\nCRITICAL RULES for Gen Z Meme Output:\n\nDELETE ALL NAMES: If you see a human name (like Jim Carrey), DELETE IT.\n\nNO @: Delete any text starting with '@'.\n\nGEN Z ONLY: If the input is long/boring, replace it with only: \"bro 💀\", \"lmao\", or \"wait for it\".\n\nSTRICT LIMIT: The entire output (caption + 3 hashtags) MUST be less than 25 characters.\n\nFORMAT: Output ONLY the final text. No labels.\nhere is the caption ...\n\n{{ $json.captionRaw }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.ollama",
+      "typeVersion": 1,
+      "position": [
+        464,
+        -32
+      ],
+      "id": "be4c4f51-f3b5-42cc-9586-9dfd3c68a4f1",
+      "name": "Message a model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "j9azQdGcVtfLjFTF",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge Data + Caption — robust node output retrieval + reliable route detection\n/******* helpers *******/\nfunction extractTextFromModel(obj) {\n  if (!obj) return null;\n\n  if (obj.content && typeof obj.content === 'string' && obj.content.trim()) return obj.content.trim();\n\n  if (obj.candidates && Array.isArray(obj.candidates) && obj.candidates.length) {\n    const c = obj.candidates[0];\n    if (c && c.content && c.content.parts && Array.isArray(c.content.parts) && c.content.parts[0]) {\n      const t = c.content.parts[0].text;\n      if (typeof t === 'string' && t.trim()) return t.trim();\n    }\n    if (typeof c === 'string' && c.trim()) return c.trim();\n    if (c && c.text && typeof c.text === 'string' && c.text.trim()) return c.text.trim();\n  }\n\n  if (Array.isArray(obj) && obj.length) {\n    if (typeof obj[0] === 'string' && obj[0].trim()) return obj[0].trim();\n    if (obj[0] && obj[0].content && typeof obj[0].content === 'string' && obj[0].content.trim()) return obj[0].content.trim();\n    if (obj[0] && obj[0].candidates) return extractTextFromModel(obj[0]);\n  }\n\n  if (obj.text && typeof obj.text === 'string' && obj.text.trim()) return obj.text.trim();\n  if (typeof obj === 'string' && obj.trim()) return obj.trim();\n\n  return null;\n}\n\nfunction collectAllKeys(obj, prefix = '') {\n  const out = new Set();\n  function rec(o, p) {\n    if (o === null || o === undefined) { out.add(p || ''); return; }\n    if (typeof o !== 'object') { out.add(p || ''); return; }\n    if (Array.isArray(o)) {\n      out.add(p || '');\n      if (o.length && typeof o[0] === 'object') rec(o[0], p ? `${p}[*]` : `[*]`);\n      return;\n    }\n    for (const k of Object.keys(o)) {\n      const path = p ? `${p}.${k}` : k;\n      out.add(path);\n      rec(o[k], path);\n    }\n  }\n  rec(obj, prefix);\n  return Array.from(out).sort();\n}\n\n/******* 1) Robustly load normalized post data *******/\nlet postData = {};\n\n// Try several common n8n access patterns so we don't miss the Normalize node output\ntry {\n  if (typeof $node !== 'undefined' && $node[\"Normalize Post Data\"]) {\n    const np = $node[\"Normalize Post Data\"];\n\n    // Common: Code node returns .item.json\n    if (np.item && np.item.json) {\n      postData = np.item.json;\n    }\n    // Common: Code node exposes .json\n    else if (np.json) {\n      postData = np.json;\n    }\n    // Some runtimes expose an array of items\n    else if (Array.isArray(np) && np.length && np[0].json) {\n      postData = np[0].json;\n    }\n    // Another possibility: node object contains nodes keyed by index\n    else if (np[0] && np[0].json) {\n      postData = np[0].json;\n    }\n  }\n\n  // If still empty, try incoming items (maybe Normalize output was passed in as the incoming item)\n  if ((!postData || Object.keys(postData).length === 0) && Array.isArray(items) && items.length) {\n    // pick the first incoming item that looks like a post (has timestamp or type/postType/videoUrl)\n    for (const it of items) {\n      if (it && it.json && (it.json.postType || it.json.type || it.json.timestamp || it.json.videoUrl || it.json.images)) {\n        postData = it.json;\n        break;\n      }\n    }\n  }\n} catch (err) {\n  // keep postData = {}\n}\n\n/******* 2) Read model output (message a model) *******/\nconst modelItem = (Array.isArray(items) && items[0] && items[0].json) ? items[0].json : null;\nconst rawModelOutput = modelItem;\n\n/******* 3) Extract processed caption (prefer model output) *******/\nlet processedCaption = (postData && (postData.captionRaw || postData.caption)) ? (postData.captionRaw || postData.caption).toString() : '';\n\ntry {\n  const extracted = extractTextFromModel(modelItem);\n  if (extracted && extracted.toString().trim().length > 0) processedCaption = extracted.toString().trim();\n} catch (e) { /* ignore and keep captionRaw */ }\n\n/******* 4) Reliable route computation *******/\nfunction valueToLower(v){ return (v || '').toString().toLowerCase(); }\n\nfunction computeRoute(pd) {\n  // 1) If Normalize node already set route, use it\n  if (pd && pd.route) return pd.route;\n\n  // 2) Try common type keys (postType, type)\n  const typeRaw = pd && (pd.postType || pd.type || pd.post_type || pd.itemType);\n  const type = typeRaw ? valueToLower(typeRaw) : '';\n\n  // 3) child posts detection (array may be [] or undefined)\n  const childPosts = Array.isArray(pd && pd.childPosts ? pd.childPosts : pd && pd.children ? pd.children : []) ? (pd.childPosts || pd.children || []) : [];\n  const childHasVideo = childPosts.some(c => valueToLower(c && (c.type || c.postType)) === 'video' || (c && (c.videoUrl || c.video)));\n  const childHasImage = childPosts.some(c => valueToLower(c && (c.type || c.postType)) === 'image' || (c && (c.images && c.images.length)));\n\n  // If explicit childPosts exist -> sidecar (user may want child_post/carousel)\n  if (Array.isArray(childPosts) && childPosts.length > 0) {\n    if (childHasVideo) return 'sidecar_video';\n    if (childHasImage) return 'sidecar_image';\n    return 'sidecar';\n  }\n\n  // mapping based on type field\n  if (type === 'video') return 'video';\n  if (type === 'image' || type === 'photo' || type === 'single_image') return 'single_image';\n  if (type === 'sidecar' || type === 'carousel') return 'sidecar';\n\n  // fallback: inspect presence of videoUrl or images\n  if (pd && (pd.videoUrl || pd.video || pd.videoUrlPreview)) return 'video';\n  if (pd && pd.images && Array.isArray(pd.images) && pd.images.length) return 'single_image';\n\n  return 'unknown';\n}\n\nconst computedRoute = computeRoute(postData);\n\n/******* 5) Map to user-friendly labels you asked for *******/\nfunction mapToUserRoute(route, pd) {\n  if (pd && Array.isArray(pd.childPosts) && pd.childPosts.length > 0) return 'child_post';\n  if (!route) return 'unknown';\n  const r = valueToLower(route);\n  if (r.indexOf('video') >= 0) return 'video';\n  if (r === 'single_image' || r === 'image' || r === 'photos') return 'photos';\n  if (r.indexOf('sidecar') >= 0 || r.indexOf('carousel') >= 0) return 'carousel';\n  return r;\n}\n\nconst userRoute = mapToUserRoute(computedRoute, postData);\n\n/******* 6) Merge and return *******/\nconst merged = { ...(postData || {}), processedCaption };\n\nconst rootKeys = Object.keys(merged || {});\nconst allKeys = collectAllKeys(merged || {});\nconst modelOutputKeys = (modelItem && typeof modelItem === 'object') ? Object.keys(modelItem) : [];\n\nreturn [\n  {\n    json: {\n      ...merged,\n      route: computedRoute,\n      userRoute,\n      _debug: {\n        // show a compact preview so you can validate quickly\n        rootKeys,\n        allKeys,\n        modelOutputKeys,\n        // preview of model output and Normalize node read attempt\n        normalizedNodeSeen: !!(postData && Object.keys(postData).length),\n        rawModelOutputPreview: typeof rawModelOutput === 'string' ? rawModelOutput.slice(0,2000) : JSON.stringify(rawModelOutput || {}).slice(0,2000),\n      },\n    },\n  },\n];"
+      },
+      "id": "910122a2-56c3-4ee3-a728-c10a957269a6",
+      "name": "Merge Data + Caption",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Upload an asset from URL').item.json.secure_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "6d6ed259-acd9-4d5c-a16c-33f9a3ed7077",
+      "name": "Download Video Binary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1424,
+        -32
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $('Message a model').item.json.content }}",
+        "regionCode": "IN",
+        "categoryId": "24",
+        "options": {}
+      },
+      "id": "ad97e833-87d4-4a79-a63c-aa41c268e9a7",
+      "name": "YouTube Upload",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        -32
+      ],
+      "credentials": {
+        "youTubeOAuth2Api": {
+          "id": "J6Trp4V1LloV9c13",
+          "name": "MEMERZ"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "node": "17841445743201812",
+        "imageUrl": "={{ $('Get Latest Post').item.json.displayUrl }}",
+        "caption": "={{ $('Message a model').item.json.content }}",
+        "additionalFields": {}
+      },
+      "type": "@mookielianhd/n8n-nodes-instagram.instagram",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        128
+      ],
+      "id": "f51de66d-9818-4a86-a65c-acd824e74a88",
+      "name": "Publish2",
+      "credentials": {
+        "instagramApi": {
+          "id": "Q1X0jtjYKeqvWYHm",
+          "name": "Instagram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.videoUrl }}",
+        "resource_type": "video",
+        "additionalFields": {
+          "upload_preset": "ml_default"
+        }
+      },
+      "type": "n8n-nodes-cloudinary.cloudinary",
+      "typeVersion": 1,
+      "position": [
+        1248,
+        -32
+      ],
+      "id": "41fde4a1-7b96-4b4e-94dd-d75c450d1b4b",
+      "name": "Upload an asset from URL",
+      "credentials": {
+        "cloudinaryApi": {
+          "id": "NF2r55fmNBuEQvib",
+          "name": "Cloudinary account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "reels",
+        "node": "17841445743201812",
+        "videoUrl": "={{ $('Upload an asset from URL').item.json.secure_url }}",
+        "caption": "={{ $('Message a model').item.json.content }}",
+        "additionalFields": {}
+      },
+      "type": "@mookielianhd/n8n-nodes-instagram.instagram",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        -32
+      ],
+      "id": "1ecbb8ad-98e9-4d02-b803-27c807f61380",
+      "name": "Publish3",
+      "credentials": {
+        "instagramApi": {
+          "id": "wME40VeHY4nBUQQQ",
+          "name": "Instagram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/17841445743201812/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{ $json.secure_url }}"
+            },
+            {
+              "name": "is_carousel_item",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1584,
+        272
+      ],
+      "id": "3dd98ab3-42bf-4db2-9fd5-507223cd77fa",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "8mM7NCWj15N2SicE",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "childPosts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        272
+      ],
+      "id": "1b11580a-cd80-443f-b424-b945919d0517",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/17841445743201812/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "=creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2384,
+        272
+      ],
+      "id": "b671812c-3fd6-4696-8d31-719210cf4aa8",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "8mM7NCWj15N2SicE",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "id",
+              "renameField": "="
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        272
+      ],
+      "id": "8c34c84f-990b-4abe-94a8-c2fc9a5fc300",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/17841445743201812/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "children",
+              "value": "={{ $json.id.join(',') }}"
+            },
+            {
+              "name": "media_type",
+              "value": "CAROUSEL"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Message a model').item.json.content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2032,
+        272
+      ],
+      "id": "fc717608-ae73-44aa-a67f-715c8989febe",
+      "name": "HTTP Request2",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "8mM7NCWj15N2SicE",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2192,
+        272
+      ],
+      "id": "20189d97-8641-44a1-85d9-ab8b5fedb63f",
+      "name": "Wait",
+      "webhookId": "4f73c1a7-7f36-4543-9981-8de011911fb9"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.displayUrl }}",
+        "additionalFields": {
+          "upload_preset": "ml_default"
+        }
+      },
+      "type": "n8n-nodes-cloudinary.cloudinary",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        272
+      ],
+      "id": "0c028a84-f640-48a8-aec4-46b16b1f3d0b",
+      "name": "Upload an asset from URL2",
+      "credentials": {
+        "cloudinaryApi": {
+          "id": "NF2r55fmNBuEQvib",
+          "name": "Cloudinary account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/17841445743201812/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "video_url",
+              "value": "={{ $json.secure_url }}"
+            },
+            {
+              "name": "is_carousel_item",
+              "value": "true"
+            },
+            {
+              "name": "media_type",
+              "value": "VIDEO"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1632,
+        -240
+      ],
+      "id": "3710219e-1bfc-4fa6-aad2-efa1523e4cbf",
+      "name": "HTTP Request3",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "8mM7NCWj15N2SicE",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/17841445743201812/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "=creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2432,
+        -240
+      ],
+      "id": "73827658-4119-4dac-a586-6041d84c8d57",
+      "name": "HTTP Request4",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "8mM7NCWj15N2SicE",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "id",
+              "renameField": "="
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        -240
+      ],
+      "id": "1365f46d-a16c-4a27-9e7b-399c4df5ae69",
+      "name": "Aggregate1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v22.0/17841445743201812/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "children",
+              "value": "={{ $json.id.join(',') }}"
+            },
+            {
+              "name": "media_type",
+              "value": "CAROUSEL"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('Message a model').item.json.content }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2096,
+        -240
+      ],
+      "id": "5111a1b3-af66-466a-89e8-32067603b447",
+      "name": "HTTP Request5",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "8mM7NCWj15N2SicE",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2272,
+        -240
+      ],
+      "id": "4fc45cb3-8c26-4761-9fa9-4de12dc49901",
+      "name": "Wait1",
+      "webhookId": "4f73c1a7-7f36-4543-9981-8de011911fb9"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.videoUrl }}",
+        "resource_type": "video",
+        "additionalFields": {
+          "upload_preset": "ml_default"
+        }
+      },
+      "type": "n8n-nodes-cloudinary.cloudinary",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        -240
+      ],
+      "id": "b1dd9d90-82f3-4313-bbcd-4b94f9b8302d",
+      "name": "Upload an asset from URL3",
+      "credentials": {
+        "cloudinaryApi": {
+          "id": "NF2r55fmNBuEQvib",
+          "name": "Cloudinary account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "sidecar_video",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "fb2c1624-4b58-46c4-bf74-53163a8188f5"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "43abc063-f55f-4142-aa47-0613f13217f7",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "video",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7f9a849b-94dd-43c6-aa76-3811b65b30ec",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "single_image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "633f8063-3aba-4840-8437-ed0821f3b8dd",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "sidecar_image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        -32
+      ],
+      "id": "a706a808-eb4d-4b2a-ade8-f32036512bd4",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "childPosts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        -240
+      ],
+      "id": "e2de58a3-289d-473e-a079-6abc5458b79b",
+      "name": "Split Out video"
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1968,
+        -240
+      ],
+      "id": "6dc19428-9c4d-42ea-a8d2-d77a4d44982d",
+      "name": "Wait2",
+      "webhookId": "4f73c1a7-7f36-4543-9981-8de011911fb9"
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1872,
+        272
+      ],
+      "id": "8a48f9d5-99d9-49d9-8902-cfd1fc710100",
+      "name": "Wait3",
+      "webhookId": "4f73c1a7-7f36-4543-9981-8de011911fb9"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1840,
+        -32
+      ],
+      "id": "736cc7a0-0c74-44c5-953f-a84022c3dea7",
+      "name": "Wait4",
+      "webhookId": "0b7cd875-2423-4bab-858f-b04d2b5a8ab9"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "45bbb880-19a1-491f-9d94-c0b987ae3958",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -80,
+        -32
+      ],
+      "id": "7d58e6f9-2e9f-4340-974b-944ee0371354",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "hostUrl": "graph-video.facebook.com",
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v22.0",
+        "node": "619440564847659",
+        "edge": "videos",
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [
+        2144,
+        -32
+      ],
+      "id": "6d15b295-7bcf-4231-810f-6d383da4cb7f",
+      "name": "Facebook Graph API",
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "8ijSl4F1DMAz0YpK",
+          "name": "Facebook Graph account sm shad"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2272,
+        -32
+      ],
+      "id": "457aa3ac-a567-4b2f-9359-c53040185961",
+      "name": "Wait5",
+      "webhookId": "0b7cd875-2423-4bab-858f-b04d2b5a8ab9"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Upload an asset from URL').item.json.secure_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "653f73a5-f954-4fb6-b2d1-5e7997ab2474",
+      "name": "Download Video Binary1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1984,
+        -32
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Apify Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get dataset items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get dataset items": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Post": {
+      "main": [
+        [
+          {
+            "node": "Normalize Post Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Post Data": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Merge Data + Caption",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Data + Caption": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video Binary": {
+      "main": [
+        [
+          {
+            "node": "YouTube Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube Upload": {
+      "main": [
+        [
+          {
+            "node": "Wait4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish2": {
+      "main": [
+        []
+      ]
+    },
+    "Upload an asset from URL": {
+      "main": [
+        [
+          {
+            "node": "Download Video Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish3": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Upload an asset from URL2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload an asset from URL2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Aggregate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate1": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request5": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload an asset from URL3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Split Out video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload an asset from URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Publish2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out video": {
+      "main": [
+        [
+          {
+            "node": "Upload an asset from URL3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait4": {
+      "main": [
+        [
+          {
+            "node": "Download Video Binary1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook Graph API": {
+      "main": [
+        [
+          {
+            "node": "Wait5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait5": {
+      "main": [
+        [
+          {
+            "node": "Publish3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video Binary1": {
+      "main": [
+        [
+          {
+            "node": "Facebook Graph API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Apify Trigger": [
+      {
+        "userId": "7owBSExbcW85kY3vi",
+        "createdAt": "2026-03-10T20:19:35.240Z",
+        "eventType": "ACTOR.RUN.SUCCEEDED",
+        "eventData": {
+          "actorId": "shu8hvrXbJbY3Eb9W",
+          "actorRunId": "Llbmxe3VMdKbI9JUB"
+        },
+        "resource": {
+          "id": "Llbmxe3VMdKbI9JUB",
+          "actId": "shu8hvrXbJbY3Eb9W",
+          "userId": "7owBSExbcW85kY3vi",
+          "startedAt": "2026-03-10T20:18:55.457Z",
+          "finishedAt": "2026-03-10T20:19:29.021Z",
+          "status": "SUCCEEDED",
+          "statusMessage": "Finished! Total 15 requests: 15 succeeded, 0 failed.",
+          "isStatusMessageTerminal": true,
+          "meta": {
+            "origin": "WEB",
+            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+          },
+          "stats": {
+            "inputBodyLen": 342,
+            "migrationCount": 0,
+            "rebootCount": 0,
+            "restartCount": 0,
+            "durationMillis": 33351,
+            "resurrectCount": 0,
+            "runTimeSecs": 33.351,
+            "metamorph": 0,
+            "computeUnits": 0.009264166666666667,
+            "memAvgBytes": 50856695.893005595,
+            "memMaxBytes": 57462784,
+            "memCurrentBytes": 0,
+            "cpuAvgUsage": 3.2656582051667007,
+            "cpuMaxUsage": 35.70958490566038,
+            "cpuCurrentUsage": 0,
+            "netRxBytes": 592072,
+            "netTxBytes": 286727
+          },
+          "options": {
+            "build": "latest",
+            "timeoutSecs": 604800,
+            "memoryMbytes": 1024,
+            "maxTotalChargeUsd": 4.612089,
+            "maxItems": null,
+            "diskMbytes": 2048
+          },
+          "buildId": "GJs0yFKKFf9gQ7nsI",
+          "exitCode": 0,
+          "defaultKeyValueStoreId": "GUzRYQs0NteoKuaPE",
+          "defaultDatasetId": "5xHvZyGeOnMDKtDOm",
+          "defaultRequestQueueId": "fMAGr4bzhKAoKYxsQ",
+          "storageIds": {
+            "keyValueStores": {
+              "default": "GUzRYQs0NteoKuaPE"
+            },
+            "datasets": {
+              "default": "5xHvZyGeOnMDKtDOm"
+            },
+            "requestQueues": {
+              "default": "fMAGr4bzhKAoKYxsQ"
+            }
+          },
+          "pricingInfo": {
+            "minimalMaxTotalChargeUsd": 0.0027,
+            "pricingModel": "PAY_PER_EVENT",
+            "isPriceChangeNotificationSuppressed": true,
+            "createdAt": "2026-02-20T12:24:59.754Z",
+            "startedAt": "2026-02-20T12:24:59.754Z",
+            "apifyMarginPercentage": 0.2,
+            "pricingPerEvent": {
+              "actorChargeEvents": {
+                "result": {
+                  "eventTitle": "Result",
+                  "eventDescription": "Each result written to the dataset",
+                  "isOneTimeEvent": false,
+                  "isPrimaryEvent": true,
+                  "eventPriceUsd": 0.0027
+                }
+              }
+            }
+          },
+          "chargedEventCounts": {
+            "result": 5
+          },
+          "platformUsageBillingModel": "DEVELOPER",
+          "accountedChargedEventCounts": {
+            "result": 4
+          },
+          "generalAccess": "FOLLOW_USER_SETTING",
+          "buildNumber": "0.0.563",
+          "containerUrl": "https://ccunafnag55f.runs.apify.net",
+          "usageTotalUsd": 0.0108,
+          "links": {
+            "publicRunUrl": "https://console.apify.com/view/runs/Llbmxe3VMdKbI9JUB",
+            "consoleRunUrl": "https://console.apify.com/actors/shu8hvrXbJbY3Eb9W/runs/Llbmxe3VMdKbI9JUB",
+            "apiRunUrl": "https://api.apify.com/v2/actor-runs/Llbmxe3VMdKbI9JUB",
+            "apiDefaultDatasetUrl": "https://api.apify.com/v2/datasets/5xHvZyGeOnMDKtDOm",
+            "apiDefaultKeyValueStoreUrl": "https://api.apify.com/v2/key-value-stores/GUzRYQs0NteoKuaPE",
+            "containerRunUrl": "https://ccunafnag55f.runs.apify.net"
+          },
+          "storages": {
+            "datasets": {
+              "default": {
+                "id": "5xHvZyGeOnMDKtDOm",
+                "apiUrl": "https://api.apify.com/v2/datasets/5xHvZyGeOnMDKtDOm"
+              }
+            },
+            "keyValueStores": {
+              "default": {
+                "id": "GUzRYQs0NteoKuaPE",
+                "apiUrl": "https://api.apify.com/v2/key-value-stores/GUzRYQs0NteoKuaPE"
+              }
+            },
+            "requestQueues": {
+              "default": {
+                "id": "fMAGr4bzhKAoKYxsQ",
+                "apiUrl": "https://api.apify.com/v2/request-queues/fMAGr4bzhKAoKYxsQ"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "857291bf2351cc25b8dab7dd9fe5064e4f3fbe858ce1e579bf6707a1d2c7a31e"
+  }
+}
